@@ -1,12 +1,13 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:PolyCode.UI.ViewModels"
+        xmlns:ae="https://github.com/avaloniaui/avaloniaedit"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
         x:Class="PolyCode.UI.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Title="PolyCode v0.0.1"
+        Title="PolyCode v0.0.2"
         WindowStartupLocation="CenterScreen"
         Background="#1E1E2E">
 
@@ -15,94 +16,97 @@
     </Design.DataContext>
 
     <Grid RowDefinitions="Auto,*,Auto">
-        <!-- Toolbar -->
-        <Border Grid.Row="0" Background="#181825" Padding="8">
-            <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto">
+
+        <!-- ── Toolbar ── -->
+        <Border Grid.Row="0" Background="#181825" Padding="8,6">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto,Auto">
+
                 <TextBlock Text="PolyCode" FontSize="18" FontWeight="Bold"
                            Foreground="#CDD6F4" VerticalAlignment="Center"
-                           Margin="4,0,16,0"/>
+                           Margin="4,0,8,0"/>
 
                 <Button Grid.Column="1" Command="{Binding ConnectCommand}"
                         Content="{Binding ConnectionStatus, StringFormat='{}{0} Connect'}"
                         Foreground="#CDD6F4" Background="#45475A"
-                        BorderThickness="0" CornerRadius="6"
-                        Margin="4,0" Padding="12,6">
-                    <Button.Styles>
-                        <Style Selector="Button:hover">
-                            <Setter Property="Background" Value="#585B70"/>
-                        </Style>
-                    </Button.Styles>
-                </Button>
+                        BorderThickness="0" CornerRadius="6" Margin="2" Padding="12,5"/>
 
-                <Button Grid.Column="2" Command="{Binding RunCommand}"
-                        Content="▶ Run" FontWeight="Bold"
+                <Button Grid.Column="2" Command="{Binding CreateSessionCommand}"
+                        Content="+ New Session" FontWeight="Bold"
+                        Foreground="#CDD6F4" Background="#89B4FA"
+                        BorderThickness="0" CornerRadius="6" Margin="2" Padding="12,5"/>
+
+                <TextBox Grid.Column="3" Text="{Binding SessionId}"
+                         PlaceholderText="Session ID"
+                         Foreground="#CDD6F4" Background="#313244"
+                         BorderThickness="0" CornerRadius="6"
+                         Margin="2" Padding="10,5" Width="140"
+                         FontFamily="monospace"/>
+
+                <Button Grid.Column="4" Command="{Binding JoinSessionCommand}"
+                        Content="Join" FontWeight="Bold"
                         Foreground="#CDD6F4" Background="#A6E3A1"
                         BorderThickness="0" CornerRadius="6"
-                        Margin="4,0" Padding="16,6">
-                    <Button.Styles>
-                        <Style Selector="Button:hover">
-                            <Setter Property="Background" Value="#94E2D5"/>
-                        </Style>
-                    </Button.Styles>
-                </Button>
+                        Margin="2,2,8,2" Padding="12,5"
+                        HorizontalAlignment="Left"/>
 
-                <Button Grid.Column="3" Command="{Binding ResetCommand}"
-                        Content="↺ Reset"
+                <Button Grid.Column="5" Command="{Binding CopySessionIdCommand}"
+                        Content="📋 Copy ID"
                         Foreground="#CDD6F4" Background="#45475A"
                         BorderThickness="0" CornerRadius="6"
-                        Margin="4,0" Padding="12,6"
-                        HorizontalAlignment="Right">
-                    <Button.Styles>
-                        <Style Selector="Button:hover">
-                            <Setter Property="Background" Value="#585B70"/>
-                        </Style>
-                    </Button.Styles>
-                </Button>
+                        Margin="2" Padding="10,5"/>
 
-                <TextBlock Grid.Column="4" Text="{Binding StatusMessage}"
-                           Foreground="#A6ADC8" VerticalAlignment="Center"
-                           FontSize="12" Margin="16,0,0,0"/>
+                <Button Grid.Column="6" Command="{Binding RunCommand}"
+                        Content="▶ Run" FontWeight="Bold"
+                        Foreground="#1E1E2E" Background="#A6E3A1"
+                        BorderThickness="0" CornerRadius="6"
+                        Margin="2" Padding="20,5"/>
+
+                <Button Grid.Column="7" Command="{Binding ResetCommand}"
+                        Content="↺"
+                        Foreground="#CDD6F4" Background="#45475A"
+                        BorderThickness="0" CornerRadius="6"
+                        Margin="2" Padding="10,5"/>
+
             </Grid>
         </Border>
 
-        <!-- Main Content -->
-        <Grid Grid.Row="1" ColumnDefinitions="2*,1*" Margin="8">
+        <!-- ── Main Content ── -->
+        <Grid Grid.Row="1" ColumnDefinitions="2*,1*" Margin="6">
+
             <!-- Code Editor Panel -->
-            <Border Background="#1E1E2E" CornerRadius="8" Margin="0,0,4,0"
+            <Border Background="#1E1E2E" CornerRadius="8" Margin="0,0,3,0"
                     BorderBrush="#313244" BorderThickness="1">
                 <Grid RowDefinitions="Auto,*">
-                    <Border Grid.Row="0" Background="#181825" CornerRadius="8,8,0,0" Padding="8,6">
-                        <TextBlock Text="Code Editor" Foreground="#A6ADC8" FontSize="13"/>
+                    <Border Grid.Row="0" Background="#181825"
+                            CornerRadius="8,8,0,0" Padding="10,6">
+                        <TextBlock Text="Code Editor" Foreground="#A6ADC8"
+                                   FontSize="12" FontWeight="SemiBold"/>
                     </Border>
-
-                    <ScrollViewer Grid.Row="1" Background="#1E1E2E">
-                        <TextBox Text="{Binding Code}"
-                                 AcceptsReturn="True"
-                                 TextWrapping="NoWrap"
-                                 FontFamily="Cascadia Code, JetBrains Mono, Fira Code, monospace"
-                                 FontSize="14"
-                                 Foreground="#CDD6F4"
-                                 Background="#1E1E2E"
-                                 BorderThickness="0"
-                                 Padding="12"
-                                 CaretBrush="#F5E0DC"
-                                 SelectionBrush="#585B70"
-                                 MinHeight="400"
-                                 TextChanged="OnCodeChanged"
-                                 KeyUp="OnCodeKeyUp"/>
-                    </ScrollViewer>
+                    <ae:TextEditor x:Name="CodeEditor"
+                                   Grid.Row="1"
+                                   FontFamily="Cascadia Code, JetBrains Mono, Fira Code, monospace"
+                                   FontSize="14"
+                                   Foreground="#CDD6F4"
+                                   Background="#1E1E2E"
+                                   BorderThickness="0"
+                                   WordWrap="False"
+                                   ShowLineNumbers="True"
+                                   LineNumbersForeground="#585B70"/>
                 </Grid>
             </Border>
 
             <!-- Output & Users Panel -->
-            <Border Grid.Column="1" Background="#1E1E2E" CornerRadius="8" Margin="4,0,0,0"
-                    BorderBrush="#313244" BorderThickness="1">
+            <Border Grid.Column="1" Background="#1E1E2E" CornerRadius="8"
+                    Margin="3,0,0,0" BorderBrush="#313244" BorderThickness="1">
                 <Grid RowDefinitions="Auto,*,Auto">
-                    <Border Grid.Row="0" Background="#181825" CornerRadius="8,8,0,0" Padding="8,6">
-                        <TextBlock Text="Output" Foreground="#A6ADC8" FontSize="13"/>
+
+                    <Border Grid.Row="0" Background="#181825"
+                            CornerRadius="8,8,0,0" Padding="10,6">
+                        <TextBlock Text="Output" Foreground="#A6ADC8"
+                                   FontSize="12" FontWeight="SemiBold"/>
                     </Border>
 
-                    <ScrollViewer Grid.Row="1">
+                    <ScrollViewer Grid.Row="1" Background="#181825">
                         <TextBox Text="{Binding Output}"
                                  IsReadOnly="True"
                                  TextWrapping="NoWrap"
@@ -110,18 +114,17 @@
                                  FontSize="13"
                                  Foreground="#A6E3A1"
                                  Background="#181825"
-                                 BorderThickness="0"
-                                 Padding="12"
-                                 MinHeight="200"/>
+                                 BorderThickness="0" Padding="12"/>
                     </ScrollViewer>
 
-                    <!-- Connected Users -->
-                    <Border Grid.Row="2" Background="#181825" CornerRadius="0,0,8,8"
-                            Padding="8" BorderBrush="#313244" BorderThickness="0,1,0,0">
+                    <Border Grid.Row="2" Background="#181825"
+                            CornerRadius="0,0,8,8" Padding="10"
+                            BorderBrush="#313244" BorderThickness="0,1,0,0">
                         <Grid RowDefinitions="Auto,Auto">
                             <TextBlock Text="Connected Users" Foreground="#A6ADC8"
-                                       FontSize="12" Margin="0,0,0,4"/>
-                            <ItemsControl Grid.Row="1" ItemsSource="{Binding RemoteCursors}">
+                                       FontSize="11" Margin="0,0,0,4"/>
+                            <ItemsControl Grid.Row="1"
+                                          ItemsSource="{Binding ConnectedUsers}">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
                                         <WrapPanel/>
@@ -129,10 +132,16 @@
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Border Background="#45475A" CornerRadius="4"
-                                                Margin="2" Padding="6,3">
-                                            <TextBlock Text="{Binding UserId}"
-                                                       Foreground="#CDD6F4" FontSize="12"/>
+                                        <Border Background="#313244" CornerRadius="4"
+                                                Margin="2" Padding="8,3">
+                                            <Grid ColumnDefinitions="Auto,Auto">
+                                                <Ellipse Width="8" Height="8" Margin="0,0,6,0"
+                                                         Fill="{Binding Color}"
+                                                         VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="1"
+                                                           Text="{Binding Username}"
+                                                           Foreground="#CDD6F4" FontSize="12"/>
+                                            </Grid>
                                         </Border>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
@@ -143,18 +152,19 @@
             </Border>
         </Grid>
 
-        <!-- Status Bar -->
-        <Border Grid.Row="2" Background="#181825" Padding="8,4">
+        <!-- ── Status Bar ── -->
+        <Border Grid.Row="2" Background="#181825" Padding="10,4">
             <Grid ColumnDefinitions="Auto,*,Auto">
-                <TextBlock Text="{Binding ConnectionStatus}" Foreground="#A6E3A1"
-                           FontSize="14" VerticalAlignment="Center" Margin="4,0"/>
+                <Ellipse Width="8" Height="8" Fill="#A6E3A1"
+                         VerticalAlignment="Center" Margin="0,0,6,0"/>
                 <TextBlock Grid.Column="1" Text="{Binding StatusMessage}"
                            Foreground="#6C7086" FontSize="12"
-                           VerticalAlignment="Center" Margin="8,0"/>
-                <TextBlock Grid.Column="2" Text="PolyCode v0.0.1"
+                           VerticalAlignment="Center" Margin="4,0"/>
+                <TextBlock Grid.Column="2" Text="PolyCode v0.0.2"
                            Foreground="#585B70" FontSize="11"
                            VerticalAlignment="Center"/>
             </Grid>
         </Border>
+
     </Grid>
 </Window>

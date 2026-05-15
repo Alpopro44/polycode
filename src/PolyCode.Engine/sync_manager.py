@@ -1,5 +1,5 @@
-import time
 import uuid
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -9,8 +9,6 @@ class CursorPosition:
     user_id: str
     line: int = 0
     column: int = 0
-    selection_start: tuple | None = None
-    selection_end: tuple | None = None
 
 
 @dataclass
@@ -30,7 +28,6 @@ class SyncManager:
         self.cursors: dict[str, CursorPosition] = {}
         self.code_buffer: str = ""
         self.operations: list[CodeOperation] = []
-        self._listeners: list = []
 
     def tick(self) -> int:
         self.lamport_clock += 1
@@ -51,55 +48,38 @@ class SyncManager:
         self.operations.append(op)
         return op
 
-    def apply_remote_operation(self, op: dict) -> bool:
-        if op["op_type"] == "cursor":
-            self.cursors[op["user_id"]] = CursorPosition(**op["data"])
-            self.update_clock(op["lamport_clock"])
-            self._notify()
-            return True
-
-        if op["op_type"] == "code_full":
-            if op["lamport_clock"] > self.lamport_clock:
-                self.code_buffer = op["data"]
-                self.update_clock(op["lamport_clock"])
-                self._notify()
-                return True
-        return False
-
     def set_code(self, code: str) -> CodeOperation:
         self.code_buffer = code
-        op = self.create_operation("code_full", code)
-        self._notify()
-        return op
+        return self.create_operation("code_full", code)
 
-    def set_cursor(self, line: int, column: int) -> CodeOperation:
-        self.cursors[self.user_id] = CursorPosition(
-            user_id=self.user_id, line=line, column=column
+    def apply_code(self, code: str, clock: int) -> bool:
+        if clock > self.lamport_clock:
+            self.code_buffer = code
+            self.update_clock(clock)
+            return True
+        return False
+
+    def set_cursor(self, user_id: str, line: int, column: int) -> CodeOperation:
+        self.cursors[user_id] = CursorPosition(
+            user_id=user_id, line=line, column=column
         )
-        op = self.create_operation(
-            "cursor",
-            {"user_id": self.user_id, "line": line, "column": column},
-        )
-        self._notify()
-        return op
+        return self.create_operation("cursor", {"user_id": user_id, "line": line, "column": column})
+
+    def remove_user(self, user_id: str):
+        self.cursors.pop(user_id, None)
 
     def get_state(self) -> dict:
         return {
             "code_buffer": self.code_buffer,
             "cursors": {
-                uid: {
-                    "user_id": c.user_id,
-                    "line": c.line,
-                    "column": c.column,
-                }
+                uid: {"user_id": c.user_id, "line": c.line, "column": c.column}
                 for uid, c in self.cursors.items()
             },
             "user_count": len(self.cursors),
         }
 
-    def on_change(self, callback):
-        self._listeners.append(callback)
-
-    def _notify(self):
-        for cb in self._listeners:
-            cb(self.get_state())
+    def reset(self):
+        self.code_buffer = ""
+        self.cursors.clear()
+        self.operations.clear()
+        self.lamport_clock = 0

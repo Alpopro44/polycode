@@ -1,6 +1,6 @@
 using System;
-using System.IO;
-using System.Net.Sockets;
+using System.Collections.Generic;
+using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -11,37 +11,41 @@ namespace PolyCode.UI.Services;
 
 public class PythonBridge : IDisposable
 {
-    private TcpClient? _client;
-    private NetworkStream? _stream;
-    private StreamReader? _reader;
-    private StreamWriter? _writer;
+    private ClientWebSocket? _ws;
     private CancellationTokenSource? _cts;
     private Task? _listenTask;
+    private readonly string _host;
+    private readonly int _port;
 
-    public event Action<CursorInfo>? OnCursorUpdate;
+    public string UserId { get; private set; } = "";
+    public string SessionId { get; private set; } = "";
+    public bool IsConnected => _ws?.State == WebSocketState.Open;
+
+    public event Action<UserInfo>? OnUserJoined;
+    public event Action<string>? OnUserLeft;
     public event Action<ExecutionResult>? OnExecutionResult;
-    public event Action<string>? OnCodeUpdate;
+    public event Action<string, int>? OnCodeUpdate;
+    public event Action<CursorInfo>? OnCursorUpdate;
+    public event Action<SessionState>? OnSessionReady;
     public event Action<string>? OnConnected;
     public event Action<string>? OnDisconnected;
     public event Action<string>? OnError;
 
-    public string UserId { get; private set; } = "";
-    public bool IsConnected => _client?.Connected ?? false;
+    public PythonBridge(string host = "127.0.0.1", int port = 9765)
+    {
+        _host = host;
+        _port = port;
+    }
 
-    public async Task ConnectAsync(string host = "127.0.0.1", int port = 9765)
+    public async Task ConnectAsync()
     {
         try
         {
-            _client = new TcpClient();
-            await _client.ConnectAsync(host, port);
-            _stream = _client.GetStream();
-            _reader = new StreamReader(_stream, Encoding.UTF8);
-            _writer = new StreamWriter(_stream, Encoding.UTF8) { NewLine = "\n", AutoFlush = true };
-
+            _ws = new ClientWebSocket();
             _cts = new CancellationTokenSource();
+            await _ws.ConnectAsync(new Uri($"ws://{_host}:{_port}"), _cts.Token);
             _listenTask = ListenAsync(_cts.Token);
-
-            OnConnected?.Invoke($"Connected to PolyCode Engine at {host}:{port}");
+            OnConnected?.Invoke($"Connected to PolyCode Engine at {_host}:{_port}");
         }
         catch (Exception ex)
         {
@@ -49,69 +53,14 @@ public class PythonBridge : IDisposable
         }
     }
 
-    private async Task ListenAsync(CancellationToken ct)
+    public async Task CreateSessionAsync()
     {
-        try
-        {
-            while (!ct.IsCancellationRequested && _reader != null)
-            {
-                var line = await _reader.ReadLineAsync(ct);
-                if (line == null) break;
+        await SendAsync(new { type = "create_session", data = new { } });
+    }
 
-                try
-                {
-                    using var doc = JsonDocument.Parse(line);
-                    var root = doc.RootElement;
-                    var type = root.GetProperty("type").GetString();
-
-                    switch (type)
-                    {
-                        case "welcome":
-                            UserId = root.GetProperty("user_id").GetString() ?? "";
-                            OnConnected?.Invoke($"Welcome! Your ID: {UserId}");
-                            break;
-
-                        case "exec_result":
-                            var result = JsonSerializer.Deserialize<ExecutionResult>(
-                                root.GetProperty("data").GetRawText(),
-                                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
-                            );
-                            if (result != null)
-                                OnExecutionResult?.Invoke(result);
-                            break;
-
-                        case "cursor_update":
-                            var cursor = JsonSerializer.Deserialize<CursorInfo>(
-                                root.GetProperty("data").GetRawText(),
-                                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
-                            );
-                            if (cursor != null)
-                                OnCursorUpdate?.Invoke(cursor);
-                            break;
-
-                        case "code_update":
-                            var code = root.GetProperty("data").GetProperty("code").GetString() ?? "";
-                            OnCodeUpdate?.Invoke(code);
-                            break;
-
-                        case "error":
-                            var msg = root.GetProperty("message").GetString() ?? "";
-                            OnError?.Invoke(msg);
-                            break;
-                    }
-                }
-                catch (JsonException ex)
-                {
-                    OnError?.Invoke($"JSON parse error: {ex.Message}");
-                }
-            }
-        }
-        catch (IOException) { }
-        catch (OperationCanceledException) { }
-        finally
-        {
-            OnDisconnected?.Invoke("Disconnected from engine");
-        }
+    public async Task JoinSessionAsync(string sessionId)
+    {
+        await SendAsync(new { type = "join_session", data = new { session_id = sessionId } });
     }
 
     public async Task ExecuteCodeAsync(string code)
@@ -119,33 +68,34 @@ public class PythonBridge : IDisposable
         await SendAsync(new { type = "execute", data = new { code } });
     }
 
-    public async Task SendCodeUpdateAsync(string code)
+    public async Task SendCodeUpdateAsync(string code, int clock = 0)
     {
-        await SendAsync(new { type = "code_update", data = new { code } });
+        await SendAsync(new { type = "code_update", data = new { code, lamport_clock = clock } });
     }
 
     public async Task SendCursorUpdateAsync(int line, int column)
     {
-        await SendAsync(new { type = "cursor_update", data = new { cursor = new { line, column } } });
+        await SendAsync(new { type = "cursor_update", data = new { line, column } });
     }
 
     public async Task RequestStateAsync()
     {
-        await SendAsync(new { type = "get_state" });
+        await SendAsync(new { type = "get_state", data = new { } });
     }
 
     public async Task ResetAsync()
     {
-        await SendAsync(new { type = "reset" });
+        await SendAsync(new { type = "reset", data = new { } });
     }
 
     private async Task SendAsync(object obj)
     {
-        if (_writer == null) return;
+        if (_ws?.State != WebSocketState.Open) return;
         try
         {
             var json = JsonSerializer.Serialize(obj);
-            await _writer.WriteLineAsync(json);
+            var bytes = Encoding.UTF8.GetBytes(json);
+            await _ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, _cts!.Token);
         }
         catch (Exception ex)
         {
@@ -153,18 +103,116 @@ public class PythonBridge : IDisposable
         }
     }
 
-    public void Disconnect()
+    private async Task ListenAsync(CancellationToken ct)
+    {
+        var buffer = new byte[1024 * 64];
+        try
+        {
+            while (!ct.IsCancellationRequested && _ws?.State == WebSocketState.Open)
+            {
+                var result = await _ws.ReceiveAsync(new ArraySegment<byte>(buffer), ct);
+                if (result.MessageType == WebSocketMessageType.Close) break;
+
+                var json = Encoding.UTF8.GetString(buffer, 0, result.Count);
+                ProcessMessage(json);
+            }
+        }
+        catch (WebSocketException ex)
+        {
+            OnError?.Invoke($"WebSocket error: {ex.Message}");
+        }
+        catch (OperationCanceledException) { }
+        finally
+        {
+            OnDisconnected?.Invoke("Disconnected from engine");
+        }
+    }
+
+    private void ProcessMessage(string raw)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(raw);
+            var root = doc.RootElement;
+            var type = root.GetProperty("type").GetString();
+            var data = root.GetProperty("data");
+
+            switch (type)
+            {
+                case "session_created":
+                case "session_joined":
+                    UserId = data.GetProperty("user_id").GetString() ?? "";
+                    SessionId = data.GetProperty("session_id").GetString() ?? "";
+                    var state = JsonSerializer.Deserialize<SessionState>(data.GetProperty("state").GetRawText());
+                    if (state != null)
+                        OnSessionReady?.Invoke(state);
+                    OnConnected?.Invoke($"Session {SessionId} | Your ID: {UserId}");
+                    break;
+
+                case "user_joined":
+                    var users = JsonSerializer.Deserialize<List<UserInfo>>(data.GetProperty("users").GetRawText());
+                    if (users != null)
+                        foreach (var u in users) OnUserJoined?.Invoke(u);
+                    break;
+
+                case "user_left":
+                    var leftId = data.GetProperty("user_id").GetString() ?? "";
+                    OnUserLeft?.Invoke(leftId);
+                    break;
+
+                case "exec_result":
+                    var result = JsonSerializer.Deserialize<ExecutionResult>(data.GetRawText());
+                    if (result != null)
+                        OnExecutionResult?.Invoke(result);
+                    break;
+
+                case "code_update":
+                    var code = data.GetProperty("code").GetString() ?? "";
+                    var clock = data.GetProperty("lamport_clock").GetInt32();
+                    OnCodeUpdate?.Invoke(code, clock);
+                    break;
+
+                case "cursor_update":
+                    var cursor = JsonSerializer.Deserialize<CursorInfo>(data.GetRawText());
+                    if (cursor != null)
+                        OnCursorUpdate?.Invoke(cursor);
+                    break;
+
+                case "state":
+                    var fullState = JsonSerializer.Deserialize<SessionState>(data.GetRawText());
+                    if (fullState != null)
+                        OnSessionReady?.Invoke(fullState);
+                    break;
+
+                case "error":
+                    var msg = root.GetProperty("message").GetString() ?? "";
+                    OnError?.Invoke(msg);
+                    break;
+            }
+        }
+        catch (JsonException ex)
+        {
+            OnError?.Invoke($"JSON error: {ex.Message}");
+        }
+    }
+
+    public async Task DisconnectAsync()
     {
         _cts?.Cancel();
-        _writer?.Close();
-        _reader?.Close();
-        _stream?.Close();
-        _client?.Close();
+        if (_ws?.State == WebSocketState.Open)
+        {
+            try
+            {
+                await _ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "User disconnected", CancellationToken.None);
+            }
+            catch { }
+        }
+        _ws?.Dispose();
     }
 
     public void Dispose()
     {
-        Disconnect();
-        _cts?.Dispose();
+        _cts?.Cancel();
+        _ws?.Dispose();
     }
 }
